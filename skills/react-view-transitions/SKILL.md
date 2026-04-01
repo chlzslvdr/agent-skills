@@ -261,6 +261,10 @@ Without it, every VT fires the browser cross-fade on **every** transition — Su
 
 They coexist because they fire at different moments. `default="none"` on both prevents cross-interference. Always pair `enter` with `exit`. Place directional VTs in page components, not layouts.
 
+### Nested VT Limitation
+
+When a parent VT exits, nested VTs inside it do **not** fire their own enter/exit — only the outermost VT animates. Per-item staggered animations during page navigation are not possible today. See [react#36135](https://github.com/facebook/react/pull/36135) for an experimental opt-in fix.
+
 ---
 
 ## Next.js Integration
