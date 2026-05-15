@@ -36,6 +36,8 @@ This skill is built from field-tested Vercel optimization patterns. The architec
 - Node.js 20+ on the host running the skill (built-in `node:test`, `fs.readdir({recursive})`, no installed deps required).
 - For per-route metrics: **Observability Plus** on the team. The skill degrades to billing-only + scanner mode without it.
 
+Do not put auth tokens in shell commands. Use `vercel login` or pre-existing environment variables; never type `VERCEL_TOKEN=...`, `--token ...`, or `Authorization: Bearer ...` into a command that the coding agent will echo in chat.
+
 **Framework support:**
 
 The skill detects the framework from `package.json`. Current coverage:

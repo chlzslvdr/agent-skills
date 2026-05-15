@@ -16,6 +16,7 @@ import {
   inferPlan,
   queryMetric,
   detectStack,
+  redactSensitiveText,
 } from '../lib/vercel.mjs';
 import { QUERIES, TIME_WINDOW, normalizerFor } from '../lib/queries.mjs';
 
@@ -318,7 +319,7 @@ import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   main().catch((err) => {
-    console.error('[collect-signals] FAILED:', err.message);
+    console.error('[collect-signals] FAILED:', redactSensitiveText(err.message));
     process.exit(1);
   });
 }

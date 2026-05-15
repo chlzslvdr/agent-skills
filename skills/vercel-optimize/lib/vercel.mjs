@@ -97,6 +97,7 @@ export async function runVercelJson(args, opts = {}) {
     stderr = err.stderr || '';
     exitCode = err.code ?? err.exitCode ?? 1;
   }
+  const safeStderr = redactSensitiveText(stderr);
 
   if (stdout && stdout.trim().startsWith('{')) {
     try {
@@ -105,9 +106,9 @@ export async function runVercelJson(args, opts = {}) {
         const failure = {
           ok: false,
           code: data.error.code || `EXIT_${exitCode}`,
-          message: data.error.message || '',
+          message: redactSensitiveText(data.error.message || ''),
           allowedValues: data.error.allowedValues,
-          stderr,
+          stderr: safeStderr,
         };
         return isDailyQuotaExceeded(failure)
           ? { ...failure, code: 'DAILY_QUOTA_EXCEEDED', originalCode: failure.code }
@@ -132,8 +133,17 @@ export async function runVercelJson(args, opts = {}) {
   return {
     ok: false,
     code: categorizeError(exitCode, stderr),
-    stderr,
+    stderr: safeStderr,
   };
+}
+
+export function redactSensitiveText(value) {
+  return String(value ?? '')
+    .replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]{12,}/gi, '$1 [REDACTED]')
+    .replace(/\b(Authorization:\s*)[^\r\n]+/gi, '$1[REDACTED]')
+    .replace(/\b(VERCEL_TOKEN|TURBO_TOKEN|NPM_TOKEN|NODE_AUTH_TOKEN|GITHUB_TOKEN)=("[^"]+"|'[^']+'|[^\s"'`]+)/g, '$1=[REDACTED]')
+    .replace(/(--token(?:=|\s+))("[^"]+"|'[^']+'|[^\s"'`]+)/gi, '$1[REDACTED]')
+    .replace(/("token"\s*:\s*")[^"]{8,}(")/gi, '$1[REDACTED]$2');
 }
 
 // CLI doesn't emit machine-readable error codes for these states — stderr substring is fallback only.
