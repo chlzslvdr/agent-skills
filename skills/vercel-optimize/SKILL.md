@@ -21,7 +21,7 @@ Core doctrine: read [references/doctrine.md](references/doctrine.md) if any rule
 
 - Vercel CLI v53+ with `vercel metrics`, `vercel usage`, `vercel contract`, and `vercel api`.
 - Authenticated CLI session: `vercel login`.
-- Linked app directory: `vercel link`. `VERCEL_PROJECT_ID` can help resolve project config, but `vercel metrics` still requires directory linkage. For team projects, the link or environment must include the project org/team so the collector can resolve a CLI-safe `--scope` and keep `vercel metrics`, `vercel usage`, and `vercel contract` on the same team.
+- Linked app directory: `vercel link`. `VERCEL_PROJECT_ID` can help resolve project config, but `vercel metrics` still requires directory linkage. The link or environment must include the intended project org/team/user scope so the collector can resolve a CLI-safe `--scope` and keep `vercel metrics`, `vercel usage`, and `vercel contract` on the same account.
 - Node.js 20+.
 - Observability Plus for route-level metric-backed recommendations.
 
@@ -76,6 +76,8 @@ Collection details, schemas, metric IDs, and degradation behavior live in [refer
 
 `collect-signals.mjs` resolves the linked project team to `commandScope.cliScope`; downstream scripts reuse that scope for every Vercel CLI command that accepts `--scope`. Do not run `vercel usage`, `vercel metrics`, or `vercel contract` manually without the same scope; unscoped usage can report the user's personal organization while route metrics come from the team project.
 
+If project or scope resolution is ambiguous, stop and ask the user which Vercel project and team/personal scope they want audited. Do not infer the intended scope from the current `vercel whoami` team, and do not proceed with metrics, usage, or contract collection until the link or `VERCEL_PROJECT_ID` + `VERCEL_ORG_ID` identifies the intended account.
+
 ### 1.1 Stop on blockers
 
 Check blockers before gating:
@@ -87,6 +89,7 @@ jq '{frameworkSupportBlocker, observabilityPlus, observabilityPlusUsable, observ
 Required actions:
 
 - `frameworkSupportBlocker === "unsupported_framework"`: use the unsupported-framework prompt above.
+- `PROJECT_SCOPE_UNRESOLVED` or `SCOPE_UNRESOLVED`: stop and ask which Vercel team/personal scope owns the project. Rerun after `vercel link --yes --project <project-name-or-id> --team <team-slug>` or after setting both `VERCEL_PROJECT_ID` and `VERCEL_ORG_ID`.
 - `observabilityPlusBlocker === null`: continue.
 - `no_traffic`: tell the user route metrics are sparse; continue only if they accept limited output.
 - `payment_required` or `no_oplus_probe`: render [references/observability-plus.md](references/observability-plus.md) verbatim and ask.

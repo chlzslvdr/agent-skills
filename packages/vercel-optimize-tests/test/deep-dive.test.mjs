@@ -311,3 +311,47 @@ process.exit(66);
     await rm(scratch, { recursive: true, force: true });
   }
 });
+
+test('deep-dive runner stops when cwd scope differs from collected signals', async () => {
+  const scratch = await mkdtemp(join(tmpdir(), 'vo-deep-dive-scope-mismatch-'));
+  try {
+    await mkdir(join(scratch, '.vercel'), { recursive: true });
+    await writeFile(join(scratch, '.vercel', 'project.json'), JSON.stringify({
+      projectId: 'prj_scope',
+      orgId: 'team_other',
+    }), 'utf-8');
+    await writeFile(join(scratch, 'merged.json'), JSON.stringify({
+      schemaVersion: '1.2',
+      projectId: 'prj_scope',
+      orgId: 'team_scope',
+      commandScope: { ok: true, cliScope: 'team-scope', source: 'team-api' },
+      metrics: {},
+    }), 'utf-8');
+    await writeFile(join(scratch, 'gate.json'), JSON.stringify({
+      toLaunch: [{ kind: 'route_errors', scope: 'route', route: '/api/fail', priority: 10 }],
+      platform: [],
+    }), 'utf-8');
+
+    let err;
+    try {
+      await exec('node', [
+        SCRIPT,
+        join(scratch, 'merged.json'),
+        join(scratch, 'gate.json'),
+        '--cwd',
+        scratch,
+      ], {
+        maxBuffer: 8 * 1024 * 1024,
+      });
+    } catch (e) {
+      err = e;
+    }
+
+    assert.ok(err, 'deep-dive should stop when cwd is linked to a different scope');
+    assert.equal(err.code, 2);
+    assert.equal(err.stdout, '');
+    assert.match(err.stderr, /different Vercel scope/);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});

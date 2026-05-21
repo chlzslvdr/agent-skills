@@ -75,6 +75,10 @@ async function main() {
   }
   log(`project link resolved (source=${project.source}; teamScope=${project.orgId ? 'yes' : 'no'})`);
 
+  if (!project.orgId) {
+    throw new Error('PROJECT_SCOPE_UNRESOLVED: the project was resolved without an org/team owner. Ask the user which Vercel team or personal scope owns the project, then rerun from a linked app directory or set VERCEL_PROJECT_ID with VERCEL_ORG_ID for that scope.');
+  }
+
   log('checking framework support…');
   const stack = await detectStack();
   const frameworkSupport = classifyFrameworkSupport(stack);

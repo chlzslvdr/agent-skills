@@ -243,8 +243,8 @@ process.exit(66);
   }
 });
 
-test('collect-signals: no orgId uses current CLI team billing.plan before user billing.plan', async () => {
-  const scratch = await mkdtemp(join(tmpdir(), 'vo-current-team-plan-'));
+test('collect-signals: missing orgId stops before scoped Vercel calls', async () => {
+  const scratch = await mkdtemp(join(tmpdir(), 'vo-missing-scope-'));
   const bin = join(scratch, 'bin');
   try {
     await mkdir(bin, { recursive: true });
@@ -266,55 +266,79 @@ if (args[0] === '--version') {
   process.stdout.write('54.1.0\\n');
   process.exit(0);
 }
-if (args[0] === 'whoami' && args[1] === '--format') {
-  json({
-    username: 'test-user',
-    billing: { plan: 'hobby' },
-    team: { id: 'team_current', slug: 'current-team', name: 'Current Team' },
-  });
-}
-if (args[0] === 'whoami') {
+if (args[0] === 'whoami' && args.length === 1) {
   process.stdout.write('test-user\\n');
   process.exit(0);
-}
-if (args[0] === 'api') {
-  const path = args[1];
-  if (path === '/v9/projects/prj_test') {
-    json({ id: 'prj_test', name: 'fixture-site' });
-  }
-  if (path === '/v2/teams/current-team') {
-    json({ id: 'team_current', slug: 'current-team', billing: { plan: 'pro' } });
-  }
-  if (path === '/v2/user') {
-    json({ user: { username: 'test-user', billing: { plan: 'hobby' } } });
-  }
-}
-if (args[0] === 'contract') {
-  json({ context: 'current-team', commitments: [], totalCommitments: 0 });
-}
-if (args[0] === 'usage') {
-  json({
-    context: 'current-team',
-    groupBy: { dimension: 'project', data: [] },
-    services: [],
-    totals: { billedCost: 0 },
-  });
 }
 process.stderr.write('unexpected vercel call: ' + args.join(' ') + '\\n');
 process.exit(66);
 `, 'utf-8');
     await chmod(fakeVercel, 0o755);
 
-    const { stdout, stderr } = await exec('node', [COLLECT, '--continue-without-observability'], {
-      cwd: scratch,
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    const out = JSON.parse(stdout);
-    assert.equal(out.plan.plan, 'pro');
-    assert.match(out.plan.reason, /team\.billing\.plan=pro/);
-    assert.equal(out.orgId, null);
-    assert.doesNotMatch(stderr, /unexpected vercel call/);
+    let err;
+    try {
+      await exec('node', [COLLECT, '--continue-without-observability'], {
+        cwd: scratch,
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+        maxBuffer: 8 * 1024 * 1024,
+      });
+    } catch (e) {
+      err = e;
+    }
+    assert.ok(err, 'collector should stop when project scope is ambiguous');
+    assert.equal(err.code, 1);
+    assert.equal(err.stdout, '');
+    assert.match(err.stderr, /PROJECT_SCOPE_UNRESOLVED/);
+    assert.doesNotMatch(err.stderr, /unexpected vercel call/);
+    assert.doesNotMatch(err.stderr, /whoami --format/);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
+
+test('collect-signals: multi-project repo.json stops instead of choosing the first project', async () => {
+  const scratch = await mkdtemp(join(tmpdir(), 'vo-ambiguous-repo-'));
+  const bin = join(scratch, 'bin');
+  try {
+    await mkdir(bin, { recursive: true });
+    await mkdir(join(scratch, '.vercel'), { recursive: true });
+    await writeFile(join(scratch, '.vercel', 'repo.json'), JSON.stringify({
+      projects: [
+        { id: 'prj_first', orgId: 'team_first' },
+        { id: 'prj_second', orgId: 'team_second' },
+      ],
+    }), 'utf-8');
+    const fakeVercel = join(bin, 'vercel');
+    await writeFile(fakeVercel, `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === '--version') {
+  process.stdout.write('54.1.0\\n');
+  process.exit(0);
+}
+if (args[0] === 'whoami' && args.length === 1) {
+  process.stdout.write('test-user\\n');
+  process.exit(0);
+}
+process.stderr.write('unexpected vercel call: ' + args.join(' ') + '\\n');
+process.exit(66);
+`, 'utf-8');
+    await chmod(fakeVercel, 0o755);
+
+    let err;
+    try {
+      await exec('node', [COLLECT], {
+        cwd: scratch,
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+        maxBuffer: 8 * 1024 * 1024,
+      });
+    } catch (e) {
+      err = e;
+    }
+    assert.ok(err, 'collector should stop on ambiguous repo links');
+    assert.equal(err.code, 1);
+    assert.equal(err.stdout, '');
+    assert.match(err.stderr, /AMBIGUOUS_PROJECT_LINK/);
+    assert.doesNotMatch(err.stderr, /unexpected vercel call/);
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }

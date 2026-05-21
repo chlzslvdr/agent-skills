@@ -55,6 +55,11 @@ async function main() {
     console.error('         Re-run with --cwd <dir-linked-to-the-collected-project>.');
     process.exit(2);
   }
+  if (merged.orgId && link.orgId && link.orgId !== merged.orgId) {
+    console.error('[deep-dive] FATAL: cwd .vercel/ links the project to a different Vercel scope than signals.json.');
+    console.error('         Re-run with --cwd <dir-linked-to-the-collected-project>, or rerun collect-signals.mjs from the intended app directory.');
+    process.exit(2);
+  }
   log(`cwd link OK (source ${link.source})`);
 
   const commandScope = await resolveDeepDiveCommandScope(merged, link);

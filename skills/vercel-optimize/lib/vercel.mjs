@@ -50,11 +50,18 @@ export async function readProjectJson(cwd = process.cwd()) {
   try {
     const raw = await readFile(join(cwd, '.vercel', 'repo.json'), 'utf-8');
     const parsed = JSON.parse(raw);
-    const first = parsed?.projects?.[0];
+    const projects = Array.isArray(parsed?.projects) ? parsed.projects.filter((p) => p?.id) : [];
+    if (projects.length > 1) {
+      throw new Error('AMBIGUOUS_PROJECT_LINK: `.vercel/repo.json` contains multiple projects. Run from the linked app directory, or pass the intended projectId together with VERCEL_ORG_ID.');
+    }
+    const first = projects[0];
     if (first?.id) {
       return { projectId: first.id, orgId: first.orgId ?? null, source: 'repo.json' };
     }
-  } catch { /* fall through */ }
+  } catch (err) {
+    if (err?.message?.startsWith('AMBIGUOUS_PROJECT_LINK:')) throw err;
+    /* fall through */
+  }
 
   // Legacy single-project format.
   try {
@@ -89,20 +96,20 @@ export async function resolveProjectId(explicit, cwd = process.cwd()) {
 
 export async function resolveCommandScope(project = {}) {
   const orgId = project?.orgId ?? null;
-  const identity = await getCliIdentity();
-  const currentTeam = identity?.team ?? null;
 
   if (!orgId) {
     return {
-      ok: true,
-      cliScope: currentTeam?.slug ?? null,
-      source: currentTeam?.slug ? 'whoami-current-team' : 'current-user',
-      required: false,
-      detail: currentTeam?.slug
-        ? 'Using the current CLI team as the command scope because the project link has no orgId.'
-        : 'Using the current CLI user scope because the project link has no orgId and no current team was reported.',
+      ok: false,
+      cliScope: null,
+      source: 'missing-org-scope',
+      required: true,
+      error: 'PROJECT_SCOPE_UNRESOLVED',
+      detail: 'The project was resolved without an org/team owner, so the collector cannot prove which Vercel scope to query.',
     };
   }
+
+  const identity = await getCliIdentity();
+  const currentTeam = identity?.team ?? null;
 
   if (String(orgId).startsWith('team_')) {
     if (currentTeam?.id === orgId && currentTeam?.slug) {
@@ -247,7 +254,7 @@ export function redactSensitiveText(value) {
     .replace(/\b(x-vercel-id:\s*)[^\r\n]+/gi, '$1[REDACTED]')
     .replace(/\b(VERCEL_TOKEN|TURBO_TOKEN|NPM_TOKEN|NODE_AUTH_TOKEN|GITHUB_TOKEN)=("[^"]+"|'[^']+'|[^\s"'`]+)/g, '$1=[REDACTED]')
     .replace(/(--token(?:=|\s+))("[^"]+"|'[^']+'|[^\s"'`]+)/gi, '$1[REDACTED]')
-    .replace(/\b(prj|team)_[A-Za-z0-9]{8,}\b/g, '$1_[REDACTED]')
+    .replace(/\b(prj|team|usr)_[A-Za-z0-9]{8,}\b/g, '$1_[REDACTED]')
     .replace(/("token"\s*:\s*")[^"]{8,}(")/gi, '$1[REDACTED]$2');
 }
 
